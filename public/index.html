@@ -9,99 +9,92 @@
 body {
 	margin:0;
 	font-family: Arial;
-	background: radial-gradient(circle at center, #050b10, #000);
-	color: #00ffe5;
+	background: radial-gradient(circle at center, #02060a, #000);
+	color:#00ffe5;
 	overflow:hidden;
 }
 
 /* =========================
-   🧠 HUD JARVIS
+   🧠 HUD PRO (MEJORADO)
 ========================= */
 
 #hud {
 	position: fixed;
 	top: 20px;
 	right: 20px;
-	width: 260px;
-	height: 160px;
-	border-radius: 14px;
-	background: rgba(0, 255, 229, 0.05);
-	border: 1px solid rgba(0, 255, 229, 0.3);
-	box-shadow: 0 0 20px rgba(0,255,229,0.2);
+	width: 280px;
+	padding: 16px;
+	border-radius: 16px;
+	background: rgba(0,255,229,0.05);
+	border: 1px solid rgba(0,255,229,0.25);
 	backdrop-filter: blur(12px);
-	padding: 12px;
-	animation: glow 3s infinite alternate;
-}
-
-@keyframes glow {
-	from { box-shadow: 0 0 10px rgba(0,255,229,0.2); }
-	to { box-shadow: 0 0 25px rgba(0,255,229,0.5); }
+	box-shadow: 0 0 30px rgba(0,255,229,0.15);
 }
 
 #hud h3 {
 	margin:0;
 	font-size: 14px;
-	color:#00ffe5;
+	letter-spacing: 2px;
 }
 
-.hud-bar {
+.hud-status {
+	margin-top:10px;
+	font-size:12px;
+	color:#aaa;
+}
+
+.hud-glow {
 	height: 6px;
+	margin-top: 12px;
 	background: rgba(0,255,229,0.2);
 	border-radius: 10px;
-	margin-top: 10px;
 	overflow:hidden;
 }
 
-.hud-bar div {
+.hud-glow div {
 	height:100%;
-	width:60%;
+	width:50%;
 	background:#00ffe5;
-	animation: pulse 2s infinite;
+	animation: move 2s infinite ease-in-out;
 }
 
-@keyframes pulse {
-	0% { width: 30%; }
-	50% { width: 90%; }
-	100% { width: 50%; }
+@keyframes move {
+	0% { width: 20%; }
+	50% { width: 100%; }
+	100% { width: 40%; }
 }
 
 /* =========================
    💬 CHAT
 ========================= */
 
-.chat-container {
-	position: absolute;
-	left: 50%;
-	top: 50%;
-	transform: translate(-50%, -50%);
-	width: 700px;
+.chat {
+	position:absolute;
+	top:50%;
+	left:50%;
+	transform:translate(-50%,-50%);
+	width:700px;
 }
 
 #chat-messages {
-	height: 400px;
+	height:420px;
 	overflow-y:auto;
-	background: rgba(0,0,0,0.6);
-	border: 1px solid rgba(0,255,229,0.2);
-	padding: 10px;
-	border-radius: 12px;
-	backdrop-filter: blur(8px);
+	padding:12px;
+	background:rgba(0,0,0,0.6);
+	border-radius:12px;
+	border:1px solid rgba(0,255,229,0.2);
 }
 
 .message {
-	margin: 10px 0;
+	margin:8px 0;
 }
 
-.user-message {
-	color:#00ffe5;
-}
+.user-message { color:#00ffe5; }
+.assistant-message { color:#fff; }
 
-.assistant-message {
-	color:#ffffff;
-}
+/* INPUT */
 
-/* input */
-
-.message-input {
+.input {
 	display:flex;
 	margin-top:10px;
 }
@@ -109,50 +102,58 @@ body {
 #user-input {
 	flex:1;
 	padding:10px;
-	border-radius:8px;
 	border:none;
-	outline:none;
+	border-radius:8px;
 	background:#001014;
 	color:#00ffe5;
+	outline:none;
 }
 
 button {
-	margin-left:8px;
-	padding:10px;
-	background:#00ffe5;
+	margin-left:6px;
+	padding:10px 14px;
 	border:none;
 	border-radius:8px;
 	cursor:pointer;
+	background:#00ffe5;
 	color:#000;
 	font-weight:bold;
 }
 
-#typing-indicator {
+#mic-btn {
+	background:#ff3b3b;
+	color:#fff;
+}
+
+#typing {
 	display:none;
-	margin-top:5px;
-	color:#888;
+	font-size:12px;
+	color:#777;
+	margin-top:6px;
 }
 </style>
 </head>
 
 <body>
 
-<!-- 🧠 HUD JARVIS -->
+<!-- 🧠 HUD -->
 <div id="hud">
 	<h3>JARVIS CORE</h3>
-	<p>STATUS: ONLINE</p>
-	<div class="hud-bar"><div></div></div>
+	<div class="hud-status">STATUS: ONLINE</div>
+	<div class="hud-glow"><div></div></div>
 </div>
 
 <!-- 💬 CHAT -->
-<div class="chat-container">
+<div class="chat">
 
 	<div id="chat-messages"></div>
 
-	<div id="typing-indicator">Analizando...</div>
+	<div id="typing">Procesando...</div>
 
-	<div class="message-input">
+	<div class="input">
 		<textarea id="user-input"></textarea>
+
+		<button id="mic-btn">🎤</button>
 		<button id="send-button">SEND</button>
 	</div>
 
