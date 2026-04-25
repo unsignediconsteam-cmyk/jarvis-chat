@@ -3,67 +3,162 @@ const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
-/* =========================
-   🧠 VOZ PRO SIN CORTES
-========================= */
-
-let voiceQueue = [];
-let speaking = false;
-
-function speakQueue(text) {
-	if (!text) return;
-
-	voiceQueue.push(text);
-	if (!speaking) processQueue();
-}
-
-function processQueue() {
-	if (voiceQueue.length === 0) {
-		speaking = false;
-		return;
-	}
-
-	speaking = true;
-
-	const text = voiceQueue.shift();
-	const u = new SpeechSynthesisUtterance(text);
-
-	let voices = speechSynthesis.getVoices();
-
-	const female =
-		voices.find(v => v.lang === "es-ES" && /female|lucia|paula|monica/i.test(v.name)) ||
-		voices.find(v => v.lang === "es-ES") ||
-		voices[0];
-
-	if (female) u.voice = female;
-
-	u.lang = "es-ES";
-	u.rate = 1.45;
-	u.pitch = 1.3;
-
-	u.onend = () => processQueue();
-
-	speechSynthesis.speak(u);
-}
-
-/* =========================
-   📦 ESTADO CHAT
-========================= */
-
 let chatHistory = [
-	{
-		role: "assistant",
-		content: "Sistema JARVIS en línea.",
-	},
+	{ role: "assistant", content: "Sistema en línea." }
 ];
 
 let isProcessing = false;
 
 /* =========================
-   ✍️ INPUT
+   🧠 VOZ SIMPLE Y ESTABLE
 ========================= */
+function speak(text) {
+	if (!text) return;
 
-userInput.addEventListener("keydown", (e) => {
+	const u = new SpeechSynthesisUtterance(text);
+
+	const voices = speechSynthesis.getVoices();
+	const voice =
+		voices.find(v => v.lang === "es-ES") || voices[0];
+
+	if (voice) u.voice = voice;
+
+	u.lang = "es-ES";
+	u.rate = 1.35;
+	u.pitch = 1.25;
+
+	speechSynthesis.cancel();
+	speechSynthesis.speak(u);
+}
+
+/* =========================
+   💬 UI
+========================= */
+function addMessage(role, text) {
+	const div = document.createElement("div");
+	div.className = "message " + role + "-message";
+	div.innerHTML = `<p>${text}</p>`;
+	chatMessages.appendChild(div);
+	chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+/* =========================
+   🚀 ENVIAR MENSAJE (REAL)
+========================= */
+async function sendMessage(textFromVoice = null) {
+	const message = textFromVoice || userInput.value.trim();
+	if (!message || isProcessing) return;
+
+	isProcessing = true;
+
+	userInput.value = "";
+	userInput.disabled = true;
+	sendButton.disabled = true;
+
+	addMessage("user", message);
+	chatHistory.push({ role: "user", content: message });
+
+	typingIndicator?.classList.add("visible");
+
+	try {
+		const res = await fetch("/api/chat", {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ messages: chatHistory })
+		});
+
+		if (!res.ok || !res.body) {
+			throw new Error("API error");
+		}
+
+		const reader = res.body.getReader();
+		const decoder = new TextDecoder();
+
+		let buffer = "";
+		let fullText = "";
+
+		const assistantDiv = document.createElement("div");
+		assistantDiv.className = "message assistant-message";
+		assistantDiv.innerHTML = "<p></p>";
+		chatMessages.appendChild(assistantDiv);
+
+		const p = assistantDiv.querySelector("p");
+
+		while (true) {
+			const { done, value } = await reader.read();
+			if (done) break;
+
+			buffer += decoder.decode(value, { stream: true });
+
+			const parsed = consumeSse(buffer);
+			buffer = parsed.buffer;
+
+			for (const event of parsed.events) {
+				if (event === "[DONE]") continue;
+
+				try {
+					const json = JSON.parse(event);
+
+					let text = "";
+
+					if (json.response) text = json.response;
+					else if (json.choices?.[0]?.delta?.content)
+						text = json.choices[0].delta.content;
+
+					if (text) {
+						fullText += text;
+						p.textContent = fullText;
+						chatMessages.scrollTop = chatMessages.scrollHeight;
+					}
+				} catch {}
+			}
+		}
+
+		if (fullText) {
+			chatHistory.push({ role: "assistant", content: fullText });
+
+			// 🔊 habla SOLO al final (esto evita retraso y bugs)
+			speak(fullText);
+		}
+
+	} catch (err) {
+		addMessage("assistant", "Error en el sistema.");
+	} finally {
+		isProcessing = false;
+		userInput.disabled = false;
+		sendButton.disabled = false;
+		typingIndicator?.classList.remove("visible");
+	}
+}
+
+/* =========================
+   🧾 SSE PARSER
+========================= */
+function consumeSse(buffer) {
+	let clean = buffer.replace(/\r/g, "");
+	const events = [];
+
+	let index;
+	while ((index = clean.indexOf("\n\n")) !== -1) {
+		const raw = clean.slice(0, index);
+		clean = clean.slice(index + 2);
+
+		const lines = raw.split("\n");
+		const data = lines
+			.filter(l => l.startsWith("data:"))
+			.map(l => l.replace("data:", "").trim())
+			.join("\n");
+
+		if (data) events.push(data);
+	}
+
+	return { events, buffer: clean };
+}
+
+/* =========================
+   🎤 INPUT
+========================= */
+userInput.addEventListener("keydown", e => {
 	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
 		sendMessage();
@@ -73,154 +168,8 @@ userInput.addEventListener("keydown", (e) => {
 sendButton.addEventListener("click", sendMessage);
 
 /* =========================
-   🚀 ENVIAR MENSAJE REAL
+   🎧 WAKE WORD (FIABLE)
 ========================= */
-
-async function sendMessage(textFromVoice = null) {
-	const message = textFromVoice || userInput.value.trim();
-	if (!message || isProcessing) return;
-
-	isProcessing = true;
-	userInput.disabled = true;
-	sendButton.disabled = true;
-
-	addMessageToChat("user", message);
-
-	userInput.value = "";
-
-	typingIndicator?.classList.add("visible");
-
-	chatHistory.push({ role: "user", content: message });
-
-	try {
-		const assistantMessageEl = document.createElement("div");
-		assistantMessageEl.className = "message assistant-message";
-		assistantMessageEl.innerHTML = "<p></p>";
-		chatMessages.appendChild(assistantMessageEl);
-
-		const assistantTextEl = assistantMessageEl.querySelector("p");
-
-		const response = await fetch("/api/chat", {
-			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ messages: chatHistory }),
-		});
-
-		if (!response.ok || !response.body) {
-			throw new Error("API error");
-		}
-
-		const reader = response.body.getReader();
-		const decoder = new TextDecoder();
-
-		let buffer = "";
-		let responseText = "";
-
-		while (true) {
-			const { done, value } = await reader.read();
-			if (done) break;
-
-			buffer += decoder.decode(value, { stream: true });
-
-			const parsed = consumeSseEvents(buffer);
-			buffer = parsed.buffer;
-
-			for (const data of parsed.events) {
-				if (data === "[DONE]") continue;
-
-				try {
-					const json = JSON.parse(data);
-
-					let content = "";
-
-					if (json.response) {
-						content = json.response;
-					} else if (json.choices?.[0]?.delta?.content) {
-						content = json.choices[0].delta.content;
-					}
-
-					if (content) {
-						responseText += content;
-
-						assistantTextEl.textContent = responseText;
-						chatMessages.scrollTop = chatMessages.scrollHeight;
-
-						/* 🔊 voz por frases */
-						const parts = responseText.split(/[.,!?]/);
-						const last = parts.slice(-2).join(" ").trim();
-
-						if (last.length > 30) {
-							speakQueue(last);
-						}
-					}
-				} catch (e) {}
-			}
-		}
-
-		if (responseText.length > 0) {
-			chatHistory.push({ role: "assistant", content: responseText });
-
-			// 🔊 hablar final completo (asegura cierre natural)
-			speakQueue(responseText);
-		}
-
-	} catch (err) {
-		addMessageToChat("assistant", "Error en el sistema.");
-	} finally {
-		typingIndicator?.classList.remove("visible");
-
-		isProcessing = false;
-		userInput.disabled = false;
-		sendButton.disabled = false;
-	}
-}
-
-/* =========================
-   💬 UI
-========================= */
-
-function addMessageToChat(role, content) {
-	const el = document.createElement("div");
-	el.className = `message ${role}-message`;
-	el.innerHTML = `<p>${content}</p>`;
-	chatMessages.appendChild(el);
-	chatMessages.scrollTop = chatMessages.scrollHeight;
-}
-
-/* =========================
-   🔁 SSE PARSER
-========================= */
-
-function consumeSseEvents(buffer) {
-	let normalized = buffer.replace(/\r/g, "");
-	const events = [];
-	let i;
-
-	while ((i = normalized.indexOf("\n\n")) !== -1) {
-		const raw = normalized.slice(0, i);
-		normalized = normalized.slice(i + 2);
-
-		const lines = raw.split("\n");
-		const dataLines = [];
-
-		for (const l of lines) {
-			if (l.startsWith("data:")) {
-				dataLines.push(l.slice(5).trim());
-			}
-		}
-
-		if (dataLines.length) {
-			events.push(dataLines.join("\n"));
-		}
-	}
-
-	return { events, buffer: normalized };
-}
-
-/* =========================
-   🎤 WAKE WORD (ARREGLADO)
-========================= */
-
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 
 if (SR) {
@@ -229,16 +178,16 @@ if (SR) {
 	rec.continuous = true;
 
 	rec.onresult = (e) => {
-		const text =
-			e.results[e.results.length - 1][0].transcript.toLowerCase();
+		const text = e.results[e.results.length - 1][0].transcript.toLowerCase();
 
 		if (text.includes("jarvis")) {
-			// ❌ antes: “sí señor”
-			// ✅ ahora: dispara chat real
-			sendMessage("jarvis");
+			userInput.value = "jarvis";
+			sendMessage();
 		}
 	};
 
+	rec.onerror = () => rec.start();
 	rec.onend = () => rec.start();
+
 	rec.start();
 }
