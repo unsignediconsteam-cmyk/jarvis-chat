@@ -4,94 +4,59 @@ const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
 /* =========================
-   🔊 VOZ FEMENINA JARVIS
+   🧠 VOZ PRO (SIN CORTES)
 ========================= */
-const speak = (text) => {
+
+let voiceQueue = [];
+let speaking = false;
+
+function speakQueue(text) {
 	if (!text) return;
+
+	voiceQueue.push(text);
+	if (!speaking) processQueue();
+}
+
+function processQueue() {
+	if (voiceQueue.length === 0) {
+		speaking = false;
+		return;
+	}
+
+	speaking = true;
+
+	const text = voiceQueue.shift();
 
 	const utterance = new SpeechSynthesisUtterance(text);
 
 	let voices = speechSynthesis.getVoices();
 
-	if (!voices || voices.length === 0) {
-		speechSynthesis.onvoiceschanged = () => {
-			voices = speechSynthesis.getVoices();
-		};
-	}
-
-	// 💥 FORZAR VOZ FEMENINA
 	const femaleVoice =
-		voices.find(v =>
-			v.lang === "es-ES" &&
-			/victoria|carolina|monica|lucia|paula|google female/i.test(v.name)
-		) ||
-		voices.find(v => v.lang === "es-ES" && v.name.toLowerCase().includes("female")) ||
+		voices.find(v => v.lang === "es-ES" && /female|lucia|paula|monica/i.test(v.name)) ||
 		voices.find(v => v.lang === "es-ES") ||
-		voices.find(v => v.lang.includes("es")) ||
 		voices[0];
 
 	if (femaleVoice) utterance.voice = femaleVoice;
 
 	utterance.lang = "es-ES";
-	utterance.rate = 1.2;   // 🔥 más fluido
-	utterance.pitch = 1.3;  // 🔥 voz femenina más marcada
-	utterance.volume = 1;
+	utterance.rate = 1.45;   // 🔥 más rápido
+	utterance.pitch = 1.3;
 
-	speechSynthesis.cancel();
+	utterance.onend = () => {
+		processQueue();
+	};
+
 	speechSynthesis.speak(utterance);
-};
-
-/* =========================
-   🎤 WAKE WORD JARVIS
-========================= */
-const SpeechRecognition =
-	window.SpeechRecognition || window.webkitSpeechRecognition;
-
-const wakeRec = SpeechRecognition ? new SpeechRecognition() : null;
-
-if (wakeRec) {
-	wakeRec.lang = "es-ES";
-	wakeRec.continuous = true;
-
-	wakeRec.onresult = (event) => {
-		const text =
-			event.results[event.results.length - 1][0].transcript.toLowerCase();
-
-		if (text.includes("jarvis")) {
-			speak("Sí señor");
-			startMic();
-		}
-	};
-
-	wakeRec.start();
-}
-
-/* =========================
-   🎤 MICRÓFONO
-========================= */
-const recognition = SpeechRecognition ? new SpeechRecognition() : null;
-
-if (recognition) {
-	recognition.lang = "es-ES";
-
-	recognition.onresult = (event) => {
-		const text = event.results[0][0].transcript;
-		userInput.value = text;
-		sendMessage();
-	};
-}
-
-function startMic() {
-	if (recognition) recognition.start();
 }
 
 /* =========================
    📦 CHAT STATE
 ========================= */
+
 let chatHistory = [
 	{
 		role: "assistant",
-		content: "Buenos días señor. JARVIS está en línea.",
+		content: "Sistema JARVIS en línea.",
 	},
 ];
 
@@ -100,6 +65,7 @@ let isProcessing = false;
 /* =========================
    ✍️ INPUT
 ========================= */
+
 userInput.addEventListener("input", function () {
 	this.style.height = "auto";
 	this.style.height = this.scrollHeight + "px";
@@ -117,6 +83,7 @@ sendButton.addEventListener("click", sendMessage);
 /* =========================
    🚀 ENVIAR MENSAJE
 ========================= */
+
 async function sendMessage() {
 	const message = userInput.value.trim();
 	if (!message || isProcessing) return;
@@ -130,7 +97,7 @@ async function sendMessage() {
 	userInput.value = "";
 	userInput.style.height = "auto";
 
-	typingIndicator.classList.add("visible");
+	typingIndicator?.classList.add("visible");
 
 	chatHistory.push({ role: "user", content: message });
 
@@ -147,6 +114,10 @@ async function sendMessage() {
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({ messages: chatHistory }),
 		});
+
+		if (!response.ok || !response.body) {
+			throw new Error("Error API");
+		}
 
 		const reader = response.body.getReader();
 		const decoder = new TextDecoder();
@@ -170,6 +141,7 @@ async function sendMessage() {
 					const json = JSON.parse(data);
 
 					let content = "";
+
 					if (json.response) {
 						content = json.response;
 					} else if (json.choices?.[0]?.delta?.content) {
@@ -180,35 +152,56 @@ async function sendMessage() {
 						responseText += content;
 
 						assistantTextEl.textContent = responseText;
-
-						// 🔥 voz en tiempo real
-						speechSynthesis.cancel();
-						speak(responseText);
-
 						chatMessages.scrollTop = chatMessages.scrollHeight;
+
+						/* =========================
+						   🔊 VOZ EN TIEMPO REAL (CLAVE)
+						========================= */
+
+						// cortar en frases naturales
+						const parts = responseText.split(/[.,!?]/);
+						const last = parts.slice(-2).join(" ").trim();
+
+						if (last.length > 25) {
+							speakQueue(last);
+						}
+
+						// HUD hook si lo tienes
+						if (window.setHUD) {
+							setHUD("PROCESSING", "SPEAKING");
+						}
 					}
 				} catch (e) {}
 			}
 		}
 
 		if (responseText.length > 0) {
-			chatHistory.push({ role: "assistant", content: responseText });
+			chatHistory.push({
+				role: "assistant",
+				content: responseText,
+			});
 		}
-	} catch (error) {
+
+	} catch (err) {
 		addMessageToChat("assistant", "Error del sistema.");
 	} finally {
-		typingIndicator.classList.remove("visible");
+		typingIndicator?.classList.remove("visible");
 
 		isProcessing = false;
 		userInput.disabled = false;
 		sendButton.disabled = false;
 		userInput.focus();
+
+		if (window.setHUD) {
+			setHUD("ONLINE", "READY");
+		}
 	}
 }
 
 /* =========================
    💬 UI
 ========================= */
+
 function addMessageToChat(role, content) {
 	const messageEl = document.createElement("div");
 	messageEl.className = `message ${role}-message`;
@@ -220,6 +213,7 @@ function addMessageToChat(role, content) {
 /* =========================
    SSE PARSER
 ========================= */
+
 function consumeSseEvents(buffer) {
 	let normalized = buffer.replace(/\r/g, "");
 	const events = [];
