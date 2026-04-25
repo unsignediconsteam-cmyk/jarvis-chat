@@ -4,7 +4,7 @@ const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
 /* =========================
-   🔊 VOZ JARVIS PRO
+   🔊 VOZ FEMENINA JARVIS
 ========================= */
 const speak = (text) => {
 	if (!text) return;
@@ -13,25 +13,28 @@ const speak = (text) => {
 
 	let voices = speechSynthesis.getVoices();
 
-	// 🔥 fix iOS / carga tardía voces
 	if (!voices || voices.length === 0) {
 		speechSynthesis.onvoiceschanged = () => {
 			voices = speechSynthesis.getVoices();
 		};
 	}
 
-	// 🧠 mejor voz disponible
-	const voice =
-		voices.find(v => v.lang === "es-ES" && v.name.toLowerCase().includes("google")) ||
+	// 💥 FORZAR VOZ FEMENINA
+	const femaleVoice =
+		voices.find(v =>
+			v.lang === "es-ES" &&
+			/victoria|carolina|monica|lucia|paula|google female/i.test(v.name)
+		) ||
+		voices.find(v => v.lang === "es-ES" && v.name.toLowerCase().includes("female")) ||
 		voices.find(v => v.lang === "es-ES") ||
 		voices.find(v => v.lang.includes("es")) ||
 		voices[0];
 
-	if (voice) utterance.voice = voice;
+	if (femaleVoice) utterance.voice = femaleVoice;
 
 	utterance.lang = "es-ES";
-	utterance.rate = 1.05;
-	utterance.pitch = 0.85;
+	utterance.rate = 1.2;   // 🔥 más fluido
+	utterance.pitch = 1.3;  // 🔥 voz femenina más marcada
 	utterance.volume = 1;
 
 	speechSynthesis.cancel();
@@ -39,11 +42,48 @@ const speak = (text) => {
 };
 
 /* =========================
-   💥 DESBLOQUEO VOZ iOS
+   🎤 WAKE WORD JARVIS
 ========================= */
-window.addEventListener("click", () => {
-	speechSynthesis.getVoices();
-});
+const SpeechRecognition =
+	window.SpeechRecognition || window.webkitSpeechRecognition;
+
+const wakeRec = SpeechRecognition ? new SpeechRecognition() : null;
+
+if (wakeRec) {
+	wakeRec.lang = "es-ES";
+	wakeRec.continuous = true;
+
+	wakeRec.onresult = (event) => {
+		const text =
+			event.results[event.results.length - 1][0].transcript.toLowerCase();
+
+		if (text.includes("jarvis")) {
+			speak("Sí señor");
+			startMic();
+		}
+	};
+
+	wakeRec.start();
+}
+
+/* =========================
+   🎤 MICRÓFONO
+========================= */
+const recognition = SpeechRecognition ? new SpeechRecognition() : null;
+
+if (recognition) {
+	recognition.lang = "es-ES";
+
+	recognition.onresult = (event) => {
+		const text = event.results[0][0].transcript;
+		userInput.value = text;
+		sendMessage();
+	};
+}
+
+function startMic() {
+	if (recognition) recognition.start();
+}
 
 /* =========================
    📦 CHAT STATE
@@ -58,7 +98,7 @@ let chatHistory = [
 let isProcessing = false;
 
 /* =========================
-   ✍️ INPUT UI
+   ✍️ INPUT
 ========================= */
 userInput.addEventListener("input", function () {
 	this.style.height = "auto";
@@ -73,29 +113,6 @@ userInput.addEventListener("keydown", function (e) {
 });
 
 sendButton.addEventListener("click", sendMessage);
-
-/* =========================
-   🎤 MICRÓFONO
-========================= */
-const SpeechRecognition =
-	window.SpeechRecognition || window.webkitSpeechRecognition;
-
-const recognition = SpeechRecognition ? new SpeechRecognition() : null;
-
-if (recognition) {
-	recognition.lang = "es-ES";
-	recognition.continuous = false;
-
-	recognition.onresult = (event) => {
-		const text = event.results[0][0].transcript;
-		userInput.value = text;
-		sendMessage();
-	};
-}
-
-function startMic() {
-	if (recognition) recognition.start();
-}
 
 /* =========================
    🚀 ENVIAR MENSAJE
@@ -131,10 +148,6 @@ async function sendMessage() {
 			body: JSON.stringify({ messages: chatHistory }),
 		});
 
-		if (!response.ok || !response.body) {
-			throw new Error("Error en respuesta");
-		}
-
 		const reader = response.body.getReader();
 		const decoder = new TextDecoder();
 
@@ -165,7 +178,13 @@ async function sendMessage() {
 
 					if (content) {
 						responseText += content;
+
 						assistantTextEl.textContent = responseText;
+
+						// 🔥 voz en tiempo real
+						speechSynthesis.cancel();
+						speak(responseText);
+
 						chatMessages.scrollTop = chatMessages.scrollHeight;
 					}
 				} catch (e) {}
@@ -174,15 +193,9 @@ async function sendMessage() {
 
 		if (responseText.length > 0) {
 			chatHistory.push({ role: "assistant", content: responseText });
-
-			// 🔊 VOZ JARVIS
-			speak(responseText);
 		}
 	} catch (error) {
-		addMessageToChat(
-			"assistant",
-			"Error del sistema. No he podido procesar la solicitud."
-		);
+		addMessageToChat("assistant", "Error del sistema.");
 	} finally {
 		typingIndicator.classList.remove("visible");
 
@@ -194,7 +207,7 @@ async function sendMessage() {
 }
 
 /* =========================
-   💬 UI CHAT
+   💬 UI
 ========================= */
 function addMessageToChat(role, content) {
 	const messageEl = document.createElement("div");
@@ -205,7 +218,7 @@ function addMessageToChat(role, content) {
 }
 
 /* =========================
-   🧠 SSE PARSER
+   SSE PARSER
 ========================= */
 function consumeSseEvents(buffer) {
 	let normalized = buffer.replace(/\r/g, "");
