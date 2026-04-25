@@ -10,43 +10,23 @@ let chatHistory = [
 let isProcessing = false;
 
 /* =========================
-   🧠 VOZ SIMPLE Y ESTABLE
-========================= */
-function speak(text) {
-	if (!text) return;
-
-	const u = new SpeechSynthesisUtterance(text);
-
-	const voices = speechSynthesis.getVoices();
-	const voice =
-		voices.find(v => v.lang === "es-ES") || voices[0];
-
-	if (voice) u.voice = voice;
-
-	u.lang = "es-ES";
-	u.rate = 1.35;
-	u.pitch = 1.25;
-
-	speechSynthesis.cancel();
-	speechSynthesis.speak(u);
-}
-
-/* =========================
    💬 UI
 ========================= */
+
 function addMessage(role, text) {
 	const div = document.createElement("div");
-	div.className = "message " + role + "-message";
+	div.className = `message ${role}-message`;
 	div.innerHTML = `<p>${text}</p>`;
 	chatMessages.appendChild(div);
 	chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 /* =========================
-   🚀 ENVIAR MENSAJE (REAL)
+   🚀 ENVIAR MENSAJE
 ========================= */
-async function sendMessage(textFromVoice = null) {
-	const message = textFromVoice || userInput.value.trim();
+
+async function sendMessage() {
+	const message = userInput.value.trim();
 	if (!message || isProcessing) return;
 
 	isProcessing = true;
@@ -77,6 +57,7 @@ async function sendMessage(textFromVoice = null) {
 		let buffer = "";
 		let fullText = "";
 
+		// crear mensaje IA desde el inicio
 		const assistantDiv = document.createElement("div");
 		assistantDiv.className = "message assistant-message";
 		assistantDiv.innerHTML = "<p></p>";
@@ -90,7 +71,7 @@ async function sendMessage(textFromVoice = null) {
 
 			buffer += decoder.decode(value, { stream: true });
 
-			const parsed = consumeSse(buffer);
+			const parsed = consumeSSE(buffer);
 			buffer = parsed.buffer;
 
 			for (const event of parsed.events) {
@@ -101,9 +82,11 @@ async function sendMessage(textFromVoice = null) {
 
 					let text = "";
 
-					if (json.response) text = json.response;
-					else if (json.choices?.[0]?.delta?.content)
+					if (json.response) {
+						text = json.response;
+					} else if (json.choices?.[0]?.delta?.content) {
 						text = json.choices[0].delta.content;
+					}
 
 					if (text) {
 						fullText += text;
@@ -115,10 +98,10 @@ async function sendMessage(textFromVoice = null) {
 		}
 
 		if (fullText) {
-			chatHistory.push({ role: "assistant", content: fullText });
-
-			// 🔊 habla SOLO al final (esto evita retraso y bugs)
-			speak(fullText);
+			chatHistory.push({
+				role: "assistant",
+				content: fullText
+			});
 		}
 
 	} catch (err) {
@@ -134,7 +117,8 @@ async function sendMessage(textFromVoice = null) {
 /* =========================
    🧾 SSE PARSER
 ========================= */
-function consumeSse(buffer) {
+
+function consumeSSE(buffer) {
 	let clean = buffer.replace(/\r/g, "");
 	const events = [];
 
@@ -156,9 +140,10 @@ function consumeSse(buffer) {
 }
 
 /* =========================
-   🎤 INPUT
+   🎧 INPUT
 ========================= */
-userInput.addEventListener("keydown", e => {
+
+userInput.addEventListener("keydown", (e) => {
 	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
 		sendMessage();
@@ -166,28 +151,3 @@ userInput.addEventListener("keydown", e => {
 });
 
 sendButton.addEventListener("click", sendMessage);
-
-/* =========================
-   🎧 WAKE WORD (FIABLE)
-========================= */
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-if (SR) {
-	const rec = new SR();
-	rec.lang = "es-ES";
-	rec.continuous = true;
-
-	rec.onresult = (e) => {
-		const text = e.results[e.results.length - 1][0].transcript.toLowerCase();
-
-		if (text.includes("jarvis")) {
-			userInput.value = "jarvis";
-			sendMessage();
-		}
-	};
-
-	rec.onerror = () => rec.start();
-	rec.onend = () => rec.start();
-
-	rec.start();
-}
