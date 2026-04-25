@@ -4,7 +4,7 @@ const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
 /* =========================
-   🧠 VOZ PRO (SIN CORTES)
+   🧠 VOZ PRO SIN CORTES
 ========================= */
 
 let voiceQueue = [];
@@ -26,31 +26,28 @@ function processQueue() {
 	speaking = true;
 
 	const text = voiceQueue.shift();
-
-	const utterance = new SpeechSynthesisUtterance(text);
+	const u = new SpeechSynthesisUtterance(text);
 
 	let voices = speechSynthesis.getVoices();
 
-	const femaleVoice =
+	const female =
 		voices.find(v => v.lang === "es-ES" && /female|lucia|paula|monica/i.test(v.name)) ||
 		voices.find(v => v.lang === "es-ES") ||
 		voices[0];
 
-	if (femaleVoice) utterance.voice = femaleVoice;
+	if (female) u.voice = female;
 
-	utterance.lang = "es-ES";
-	utterance.rate = 1.45;   // 🔥 más rápido
-	utterance.pitch = 1.3;
+	u.lang = "es-ES";
+	u.rate = 1.45;
+	u.pitch = 1.3;
 
-	utterance.onend = () => {
-		processQueue();
-	};
+	u.onend = () => processQueue();
 
-	speechSynthesis.speak(utterance);
+	speechSynthesis.speak(u);
 }
 
 /* =========================
-   📦 CHAT STATE
+   📦 ESTADO CHAT
 ========================= */
 
 let chatHistory = [
@@ -66,12 +63,7 @@ let isProcessing = false;
    ✍️ INPUT
 ========================= */
 
-userInput.addEventListener("input", function () {
-	this.style.height = "auto";
-	this.style.height = this.scrollHeight + "px";
-});
-
-userInput.addEventListener("keydown", function (e) {
+userInput.addEventListener("keydown", (e) => {
 	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
 		sendMessage();
@@ -81,11 +73,11 @@ userInput.addEventListener("keydown", function (e) {
 sendButton.addEventListener("click", sendMessage);
 
 /* =========================
-   🚀 ENVIAR MENSAJE
+   🚀 ENVIAR MENSAJE REAL
 ========================= */
 
-async function sendMessage() {
-	const message = userInput.value.trim();
+async function sendMessage(textFromVoice = null) {
+	const message = textFromVoice || userInput.value.trim();
 	if (!message || isProcessing) return;
 
 	isProcessing = true;
@@ -95,7 +87,6 @@ async function sendMessage() {
 	addMessageToChat("user", message);
 
 	userInput.value = "";
-	userInput.style.height = "auto";
 
 	typingIndicator?.classList.add("visible");
 
@@ -116,7 +107,7 @@ async function sendMessage() {
 		});
 
 		if (!response.ok || !response.body) {
-			throw new Error("Error API");
+			throw new Error("API error");
 		}
 
 		const reader = response.body.getReader();
@@ -154,21 +145,12 @@ async function sendMessage() {
 						assistantTextEl.textContent = responseText;
 						chatMessages.scrollTop = chatMessages.scrollHeight;
 
-						/* =========================
-						   🔊 VOZ EN TIEMPO REAL (CLAVE)
-						========================= */
-
-						// cortar en frases naturales
+						/* 🔊 voz por frases */
 						const parts = responseText.split(/[.,!?]/);
 						const last = parts.slice(-2).join(" ").trim();
 
-						if (last.length > 25) {
+						if (last.length > 30) {
 							speakQueue(last);
-						}
-
-						// HUD hook si lo tienes
-						if (window.setHUD) {
-							setHUD("PROCESSING", "SPEAKING");
 						}
 					}
 				} catch (e) {}
@@ -176,25 +158,20 @@ async function sendMessage() {
 		}
 
 		if (responseText.length > 0) {
-			chatHistory.push({
-				role: "assistant",
-				content: responseText,
-			});
+			chatHistory.push({ role: "assistant", content: responseText });
+
+			// 🔊 hablar final completo (asegura cierre natural)
+			speakQueue(responseText);
 		}
 
 	} catch (err) {
-		addMessageToChat("assistant", "Error del sistema.");
+		addMessageToChat("assistant", "Error en el sistema.");
 	} finally {
 		typingIndicator?.classList.remove("visible");
 
 		isProcessing = false;
 		userInput.disabled = false;
 		sendButton.disabled = false;
-		userInput.focus();
-
-		if (window.setHUD) {
-			setHUD("ONLINE", "READY");
-		}
 	}
 }
 
@@ -203,32 +180,32 @@ async function sendMessage() {
 ========================= */
 
 function addMessageToChat(role, content) {
-	const messageEl = document.createElement("div");
-	messageEl.className = `message ${role}-message`;
-	messageEl.innerHTML = `<p>${content}</p>`;
-	chatMessages.appendChild(messageEl);
+	const el = document.createElement("div");
+	el.className = `message ${role}-message`;
+	el.innerHTML = `<p>${content}</p>`;
+	chatMessages.appendChild(el);
 	chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 /* =========================
-   SSE PARSER
+   🔁 SSE PARSER
 ========================= */
 
 function consumeSseEvents(buffer) {
 	let normalized = buffer.replace(/\r/g, "");
 	const events = [];
-	let eventEndIndex;
+	let i;
 
-	while ((eventEndIndex = normalized.indexOf("\n\n")) !== -1) {
-		const raw = normalized.slice(0, eventEndIndex);
-		normalized = normalized.slice(eventEndIndex + 2);
+	while ((i = normalized.indexOf("\n\n")) !== -1) {
+		const raw = normalized.slice(0, i);
+		normalized = normalized.slice(i + 2);
 
 		const lines = raw.split("\n");
 		const dataLines = [];
 
-		for (const line of lines) {
-			if (line.startsWith("data:")) {
-				dataLines.push(line.slice(5).trim());
+		for (const l of lines) {
+			if (l.startsWith("data:")) {
+				dataLines.push(l.slice(5).trim());
 			}
 		}
 
@@ -238,4 +215,30 @@ function consumeSseEvents(buffer) {
 	}
 
 	return { events, buffer: normalized };
+}
+
+/* =========================
+   🎤 WAKE WORD (ARREGLADO)
+========================= */
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+if (SR) {
+	const rec = new SR();
+	rec.lang = "es-ES";
+	rec.continuous = true;
+
+	rec.onresult = (e) => {
+		const text =
+			e.results[e.results.length - 1][0].transcript.toLowerCase();
+
+		if (text.includes("jarvis")) {
+			// ❌ antes: “sí señor”
+			// ✅ ahora: dispara chat real
+			sendMessage("jarvis");
+		}
+	};
+
+	rec.onend = () => rec.start();
+	rec.start();
 }
