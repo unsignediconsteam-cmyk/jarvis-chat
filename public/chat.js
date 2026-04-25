@@ -4,15 +4,36 @@ const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
 let chatHistory = [
-	{ role: "assistant", content: "Sistema en línea." }
+	{ role: "assistant", content: "Sistema listo." }
 ];
 
 let isProcessing = false;
 
 /* =========================
+   🔊 VOZ
+========================= */
+function speak(text) {
+	if (!text) return;
+
+	const u = new SpeechSynthesisUtterance(text);
+
+	const voices = speechSynthesis.getVoices();
+	const voice =
+		voices.find(v => v.lang === "es-ES") || voices[0];
+
+	if (voice) u.voice = voice;
+
+	u.lang = "es-ES";
+	u.rate = 1.4;
+	u.pitch = 1.3;
+
+	speechSynthesis.cancel();
+	speechSynthesis.speak(u);
+}
+
+/* =========================
    💬 UI
 ========================= */
-
 function addMessage(role, text) {
 	const div = document.createElement("div");
 	div.className = `message ${role}-message`;
@@ -22,11 +43,10 @@ function addMessage(role, text) {
 }
 
 /* =========================
-   🚀 ENVIAR MENSAJE
+   🚀 ENVIAR MENSAJE REAL
 ========================= */
-
-async function sendMessage() {
-	const message = userInput.value.trim();
+async function sendMessage(textFromMic = null) {
+	const message = textFromMic || userInput.value.trim();
 	if (!message || isProcessing) return;
 
 	isProcessing = true;
@@ -57,13 +77,12 @@ async function sendMessage() {
 		let buffer = "";
 		let fullText = "";
 
-		// crear mensaje IA desde el inicio
-		const assistantDiv = document.createElement("div");
-		assistantDiv.className = "message assistant-message";
-		assistantDiv.innerHTML = "<p></p>";
-		chatMessages.appendChild(assistantDiv);
+		const aiDiv = document.createElement("div");
+		aiDiv.className = "message assistant-message";
+		aiDiv.innerHTML = "<p></p>";
+		chatMessages.appendChild(aiDiv);
 
-		const p = assistantDiv.querySelector("p");
+		const p = aiDiv.querySelector("p");
 
 		while (true) {
 			const { done, value } = await reader.read();
@@ -98,14 +117,14 @@ async function sendMessage() {
 		}
 
 		if (fullText) {
-			chatHistory.push({
-				role: "assistant",
-				content: fullText
-			});
+			chatHistory.push({ role: "assistant", content: fullText });
+
+			// 🔊 solo al final
+			speak(fullText);
 		}
 
 	} catch (err) {
-		addMessage("assistant", "Error en el sistema.");
+		addMessage("assistant", "Error de conexión con el modelo.");
 	} finally {
 		isProcessing = false;
 		userInput.disabled = false;
@@ -115,17 +134,38 @@ async function sendMessage() {
 }
 
 /* =========================
+   🎤 MICRÓFONO
+========================= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+let recognition = null;
+
+if (SR) {
+	recognition = new SR();
+	recognition.lang = "es-ES";
+	recognition.continuous = false;
+
+	recognition.onresult = (e) => {
+		const text = e.results[0][0].transcript;
+		sendMessage(text);
+	};
+}
+
+function startMic() {
+	if (recognition) recognition.start();
+}
+
+/* =========================
    🧾 SSE PARSER
 ========================= */
-
 function consumeSSE(buffer) {
 	let clean = buffer.replace(/\r/g, "");
 	const events = [];
 
-	let index;
-	while ((index = clean.indexOf("\n\n")) !== -1) {
-		const raw = clean.slice(0, index);
-		clean = clean.slice(index + 2);
+	let i;
+	while ((i = clean.indexOf("\n\n")) !== -1) {
+		const raw = clean.slice(0, i);
+		clean = clean.slice(i + 2);
 
 		const lines = raw.split("\n");
 		const data = lines
@@ -140,9 +180,8 @@ function consumeSSE(buffer) {
 }
 
 /* =========================
-   🎧 INPUT
+   INPUT
 ========================= */
-
 userInput.addEventListener("keydown", (e) => {
 	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
