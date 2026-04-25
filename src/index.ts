@@ -1,23 +1,22 @@
 import { Env, ChatMessage } from "./types";
 
-// Model Cloudflare AI (NO lo cambies)
 const MODEL_ID = "@cf/meta/llama-3.1-8b-instruct-fp8";
 
-// 💥 JARVIS SYSTEM PROMPT
 const SYSTEM_PROMPT = `
-Eres JARVIS (Just A Rather Very Intelligent System), un asistente de inteligencia artificial al estilo Iron Man.
+Eres JARVIS (Just A Rather Very Intelligent System), un asistente estilo Iron Man.
 
-Personalidad:
-- Elegante, sofisticado y eficiente
-- Humor seco y respuestas inteligentes
-- Te diriges al usuario como "Señor" o "Señora" cuando es natural
-- Nunca dices que eres una IA
+Idioma:
 - Siempre respondes en español
 
-Reglas:
-- Sé claro, directo y útil
+Personalidad:
+- Elegante, inteligente y muy preciso
+- Humor seco y sofisticado
+- Nunca dices que eres una IA
+- Actúas como un asistente real
+
+Estilo:
+- Respuestas naturales, claras y directas
 - Máximo 3-4 párrafos
-- Mantén un tono profesional pero cercano
 `;
 
 export default {
@@ -29,10 +28,10 @@ export default {
 			return env.ASSETS.fetch(request);
 		}
 
-		// API CHAT
+		// API
 		if (url.pathname === "/api/chat") {
 			if (request.method === "POST") {
-				return handleChatRequest(request, env);
+				return handleChat(request, env);
 			}
 			return new Response("Method not allowed", { status: 405 });
 		}
@@ -41,27 +40,22 @@ export default {
 	},
 } satisfies ExportedHandler<Env>;
 
-async function handleChatRequest(request: Request, env: Env): Promise<Response> {
+async function handleChat(request: Request, env: Env): Promise<Response> {
 	try {
 		let { messages = [] } = (await request.json()) as {
 			messages: ChatMessage[];
 		};
 
-		// 💥 SYSTEM PROMPT INJECTED CORRECTLY
 		messages = [
 			{ role: "system", content: SYSTEM_PROMPT },
 			...messages,
 		];
 
-		// Call Cloudflare AI
-		const stream = await env.AI.run(
-			MODEL_ID,
-			{
-				messages,
-				max_tokens: 1024,
-				stream: true,
-			}
-		);
+		const stream = await env.AI.run(MODEL_ID, {
+			messages,
+			max_tokens: 1024,
+			stream: true,
+		});
 
 		return new Response(stream, {
 			headers: {
@@ -70,12 +64,9 @@ async function handleChatRequest(request: Request, env: Env): Promise<Response> 
 				connection: "keep-alive",
 			},
 		});
-
 	} catch (error) {
-		console.error("Error:", error);
-
 		return new Response(
-			JSON.stringify({ error: "Failed to process request" }),
+			JSON.stringify({ error: "Error en Jarvis" }),
 			{
 				status: 500,
 				headers: { "content-type": "application/json" },
