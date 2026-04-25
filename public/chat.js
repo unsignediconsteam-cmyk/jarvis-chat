@@ -3,32 +3,68 @@ const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
-// 🔊 VOZ JARVIS
+/* =========================
+   🔊 VOZ JARVIS PRO
+========================= */
 const speak = (text) => {
 	if (!text) return;
+
 	const utterance = new SpeechSynthesisUtterance(text);
+
+	let voices = speechSynthesis.getVoices();
+
+	// 🔥 fix iOS / carga tardía voces
+	if (!voices || voices.length === 0) {
+		speechSynthesis.onvoiceschanged = () => {
+			voices = speechSynthesis.getVoices();
+		};
+	}
+
+	// 🧠 mejor voz disponible
+	const voice =
+		voices.find(v => v.lang === "es-ES" && v.name.toLowerCase().includes("google")) ||
+		voices.find(v => v.lang === "es-ES") ||
+		voices.find(v => v.lang.includes("es")) ||
+		voices[0];
+
+	if (voice) utterance.voice = voice;
+
 	utterance.lang = "es-ES";
-	utterance.rate = 1;
-	utterance.pitch = 1;
+	utterance.rate = 1.05;
+	utterance.pitch = 0.85;
+	utterance.volume = 1;
+
+	speechSynthesis.cancel();
 	speechSynthesis.speak(utterance);
 };
 
+/* =========================
+   💥 DESBLOQUEO VOZ iOS
+========================= */
+window.addEventListener("click", () => {
+	speechSynthesis.getVoices();
+});
+
+/* =========================
+   📦 CHAT STATE
+========================= */
 let chatHistory = [
 	{
 		role: "assistant",
-		content: "Buenos días señor. JARVIS en línea. ¿En qué puedo ayudarle?",
+		content: "Buenos días señor. JARVIS está en línea.",
 	},
 ];
 
 let isProcessing = false;
 
-// Auto resize input
+/* =========================
+   ✍️ INPUT UI
+========================= */
 userInput.addEventListener("input", function () {
 	this.style.height = "auto";
 	this.style.height = this.scrollHeight + "px";
 });
 
-// Enter to send
 userInput.addEventListener("keydown", function (e) {
 	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
@@ -39,9 +75,8 @@ userInput.addEventListener("keydown", function (e) {
 sendButton.addEventListener("click", sendMessage);
 
 /* =========================
-   🎤 MICRÓFONO JARVIS
+   🎤 MICRÓFONO
 ========================= */
-
 const SpeechRecognition =
 	window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -50,17 +85,7 @@ const recognition = SpeechRecognition ? new SpeechRecognition() : null;
 if (recognition) {
 	recognition.lang = "es-ES";
 	recognition.continuous = false;
-}
 
-function startMic() {
-	if (!recognition) {
-		alert("Micrófono no soportado en este navegador");
-		return;
-	}
-	recognition.start();
-}
-
-if (recognition) {
 	recognition.onresult = (event) => {
 		const text = event.results[0][0].transcript;
 		userInput.value = text;
@@ -68,10 +93,13 @@ if (recognition) {
 	};
 }
 
+function startMic() {
+	if (recognition) recognition.start();
+}
+
 /* =========================
    🚀 ENVIAR MENSAJE
 ========================= */
-
 async function sendMessage() {
 	const message = userInput.value.trim();
 	if (!message || isProcessing) return;
@@ -113,11 +141,6 @@ async function sendMessage() {
 		let buffer = "";
 		let responseText = "";
 
-		const updateUI = () => {
-			assistantTextEl.textContent = responseText;
-			chatMessages.scrollTop = chatMessages.scrollHeight;
-		};
-
 		while (true) {
 			const { done, value } = await reader.read();
 			if (done) break;
@@ -142,7 +165,8 @@ async function sendMessage() {
 
 					if (content) {
 						responseText += content;
-						updateUI();
+						assistantTextEl.textContent = responseText;
+						chatMessages.scrollTop = chatMessages.scrollHeight;
 					}
 				} catch (e) {}
 			}
@@ -151,7 +175,7 @@ async function sendMessage() {
 		if (responseText.length > 0) {
 			chatHistory.push({ role: "assistant", content: responseText });
 
-			// 🔊 JARVIS HABLA
+			// 🔊 VOZ JARVIS
 			speak(responseText);
 		}
 	} catch (error) {
@@ -170,9 +194,8 @@ async function sendMessage() {
 }
 
 /* =========================
-   💬 CHAT UI
+   💬 UI CHAT
 ========================= */
-
 function addMessageToChat(role, content) {
 	const messageEl = document.createElement("div");
 	messageEl.className = `message ${role}-message`;
@@ -182,9 +205,8 @@ function addMessageToChat(role, content) {
 }
 
 /* =========================
-   SSE PARSER
+   🧠 SSE PARSER
 ========================= */
-
 function consumeSseEvents(buffer) {
 	let normalized = buffer.replace(/\r/g, "");
 	const events = [];
