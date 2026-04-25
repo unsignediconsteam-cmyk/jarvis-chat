@@ -3,33 +3,67 @@ document.addEventListener("DOMContentLoaded", () => {
 const chatMessages = document.getElementById("chat-messages");
 const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
+const micBtn = document.getElementById("mic-btn");
 const typingIndicator = document.getElementById("typing-indicator");
 
 if (!chatMessages || !userInput || !sendButton) {
-	console.error("HUD o DOM roto");
+	console.error("DOM roto");
 	return;
 }
 
+/* =========================
+   🧠 CHAT STATE
+========================= */
 let chatHistory = [
-	{ role: "assistant", content: "JARVIS activo." }
+	{ role: "assistant", content: "Sistema listo." }
 ];
 
 let isProcessing = false;
 
 /* =========================
-   🔊 VOZ JARVIS
+   🔊 VOZ FINAL PRO (SIN TOCAR NADA MÁS)
 ========================= */
-function speak(text) {
+
+let voiceQueue = [];
+let speaking = false;
+
+function speakStream(text) {
 	if (!text) return;
 
-	const u = new SpeechSynthesisUtterance(text);
+	const sentences = text
+		.split(/(?<=[.!?])\s+/)
+		.filter(Boolean);
+
+	voiceQueue.push(...sentences);
+
+	if (!speaking) playVoice();
+}
+
+function playVoice() {
+	if (voiceQueue.length === 0) {
+		speaking = false;
+		return;
+	}
+
+	speaking = true;
+
+	const sentence = voiceQueue.shift();
+
+	const u = new SpeechSynthesisUtterance(sentence);
 	const voices = speechSynthesis.getVoices();
 
-	u.voice = voices.find(v => v.lang === "es-ES") || voices[0];
+	const voice =
+		voices.find(v => v.lang === "es-ES") ||
+		voices[0];
+
+	if (voice) u.voice = voice;
 
 	u.lang = "es-ES";
-	u.rate = 1.35;
+	u.rate = 1.5;
 	u.pitch = 1.3;
+
+	u.onend = playVoice;
+	u.onerror = playVoice;
 
 	speechSynthesis.cancel();
 	speechSynthesis.speak(u);
@@ -47,10 +81,11 @@ function addMessage(role, text) {
 }
 
 /* =========================
-   🚀 CHAT
+   🚀 CHAT STREAMING
 ========================= */
-async function sendMessage() {
-	const message = userInput.value.trim();
+async function sendMessage(textFromMic = null) {
+
+	const message = textFromMic || userInput.value.trim();
 	if (!message || isProcessing) return;
 
 	isProcessing = true;
@@ -62,9 +97,10 @@ async function sendMessage() {
 	addMessage("user", message);
 	chatHistory.push({ role: "user", content: message });
 
-	typingIndicator.style.display = "block";
+	typingIndicator && (typingIndicator.style.display = "block");
 
 	try {
+
 		const res = await fetch("/api/chat", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
@@ -75,7 +111,7 @@ async function sendMessage() {
 		const decoder = new TextDecoder();
 
 		let buffer = "";
-		let full = "";
+		let fullText = "";
 
 		const ai = document.createElement("div");
 		ai.className = "message assistant-message";
@@ -93,6 +129,7 @@ async function sendMessage() {
 			buffer = parsed.buffer;
 
 			for (const ev of parsed.events) {
+
 				if (ev === "[DONE]") continue;
 
 				try {
@@ -104,31 +141,56 @@ async function sendMessage() {
 						"";
 
 					if (text) {
-						full += text;
-						p.textContent = full;
+						fullText += text;
+						p.textContent = fullText;
 						chatMessages.scrollTop = chatMessages.scrollHeight;
 					}
+
 				} catch {}
 			}
 		}
 
-		if (full) {
-			chatHistory.push({ role: "assistant", content: full });
-			speak(full);
+		if (fullText) {
+			chatHistory.push({ role: "assistant", content: fullText });
+
+			// 🔥 VOZ FLUIDA FINAL
+			speakStream(fullText);
 		}
 
 	} catch (e) {
-		addMessage("assistant", "ERROR JARVIS CORE");
-	} finally {
-		isProcessing = false;
-		userInput.disabled = false;
-		sendButton.disabled = false;
-		typingIndicator.style.display = "none";
+		addMessage("assistant", "Error del sistema.");
 	}
+
+	isProcessing = false;
+	userInput.disabled = false;
+	sendButton.disabled = false;
+
+	typingIndicator && (typingIndicator.style.display = "none");
 }
 
 /* =========================
-   SSE
+   🎤 MICRÓFONO
+========================= */
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const rec = SR ? new SR() : null;
+
+if (rec) {
+	rec.lang = "es-ES";
+	rec.continuous = false;
+
+	rec.onresult = (e) => {
+		const text = e.results[0][0].transcript;
+		sendMessage(text);
+	};
+}
+
+if (micBtn) {
+	micBtn.onclick = () => rec && rec.start();
+}
+
+/* =========================
+   SSE PARSER
 ========================= */
 function parseSSE(buffer) {
 	let clean = buffer.replace(/\r/g, "");
@@ -152,12 +214,12 @@ function parseSSE(buffer) {
 }
 
 /* =========================
-   INPUT
+   EVENTS
 ========================= */
-sendButton.addEventListener("click", sendMessage);
+sendButton.onclick = () => sendMessage();
 
 userInput.addEventListener("keydown", (e) => {
-	if (e.key === "Enter" && !e.shiftKey) {
+	if (e.key === "Enter") {
 		e.preventDefault();
 		sendMessage();
 	}
