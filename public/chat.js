@@ -1,30 +1,34 @@
+document.addEventListener("DOMContentLoaded", () => {
+
 const chatMessages = document.getElementById("chat-messages");
 const userInput = document.getElementById("user-input");
 const sendButton = document.getElementById("send-button");
 const typingIndicator = document.getElementById("typing-indicator");
 
+if (!chatMessages || !userInput || !sendButton) {
+	console.error("HUD o DOM roto");
+	return;
+}
+
 let chatHistory = [
-	{ role: "assistant", content: "Sistema listo." }
+	{ role: "assistant", content: "JARVIS activo." }
 ];
 
 let isProcessing = false;
 
 /* =========================
-   🔊 VOZ
+   🔊 VOZ JARVIS
 ========================= */
 function speak(text) {
 	if (!text) return;
 
 	const u = new SpeechSynthesisUtterance(text);
-
 	const voices = speechSynthesis.getVoices();
-	const voice =
-		voices.find(v => v.lang === "es-ES") || voices[0];
 
-	if (voice) u.voice = voice;
+	u.voice = voices.find(v => v.lang === "es-ES") || voices[0];
 
 	u.lang = "es-ES";
-	u.rate = 1.4;
+	u.rate = 1.35;
 	u.pitch = 1.3;
 
 	speechSynthesis.cancel();
@@ -37,16 +41,16 @@ function speak(text) {
 function addMessage(role, text) {
 	const div = document.createElement("div");
 	div.className = `message ${role}-message`;
-	div.innerHTML = `<p>${text}</p>`;
+	div.textContent = text;
 	chatMessages.appendChild(div);
 	chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 /* =========================
-   🚀 ENVIAR MENSAJE REAL
+   🚀 CHAT
 ========================= */
-async function sendMessage(textFromMic = null) {
-	const message = textFromMic || userInput.value.trim();
+async function sendMessage() {
+	const message = userInput.value.trim();
 	if (!message || isProcessing) return;
 
 	isProcessing = true;
@@ -58,7 +62,7 @@ async function sendMessage(textFromMic = null) {
 	addMessage("user", message);
 	chatHistory.push({ role: "user", content: message });
 
-	typingIndicator?.classList.add("visible");
+	typingIndicator.style.display = "block";
 
 	try {
 		const res = await fetch("/api/chat", {
@@ -67,22 +71,17 @@ async function sendMessage(textFromMic = null) {
 			body: JSON.stringify({ messages: chatHistory })
 		});
 
-		if (!res.ok || !res.body) {
-			throw new Error("API error");
-		}
-
 		const reader = res.body.getReader();
 		const decoder = new TextDecoder();
 
 		let buffer = "";
-		let fullText = "";
+		let full = "";
 
-		const aiDiv = document.createElement("div");
-		aiDiv.className = "message assistant-message";
-		aiDiv.innerHTML = "<p></p>";
-		chatMessages.appendChild(aiDiv);
-
-		const p = aiDiv.querySelector("p");
+		const ai = document.createElement("div");
+		ai.className = "message assistant-message";
+		const p = document.createElement("p");
+		ai.appendChild(p);
+		chatMessages.appendChild(ai);
 
 		while (true) {
 			const { done, value } = await reader.read();
@@ -90,75 +89,48 @@ async function sendMessage(textFromMic = null) {
 
 			buffer += decoder.decode(value, { stream: true });
 
-			const parsed = consumeSSE(buffer);
+			const parsed = parseSSE(buffer);
 			buffer = parsed.buffer;
 
-			for (const event of parsed.events) {
-				if (event === "[DONE]") continue;
+			for (const ev of parsed.events) {
+				if (ev === "[DONE]") continue;
 
 				try {
-					const json = JSON.parse(event);
+					const json = JSON.parse(ev);
 
-					let text = "";
-
-					if (json.response) {
-						text = json.response;
-					} else if (json.choices?.[0]?.delta?.content) {
-						text = json.choices[0].delta.content;
-					}
+					let text =
+						json.response ||
+						json.choices?.[0]?.delta?.content ||
+						"";
 
 					if (text) {
-						fullText += text;
-						p.textContent = fullText;
+						full += text;
+						p.textContent = full;
 						chatMessages.scrollTop = chatMessages.scrollHeight;
 					}
 				} catch {}
 			}
 		}
 
-		if (fullText) {
-			chatHistory.push({ role: "assistant", content: fullText });
-
-			// 🔊 solo al final
-			speak(fullText);
+		if (full) {
+			chatHistory.push({ role: "assistant", content: full });
+			speak(full);
 		}
 
-	} catch (err) {
-		addMessage("assistant", "Error de conexión con el modelo.");
+	} catch (e) {
+		addMessage("assistant", "ERROR JARVIS CORE");
 	} finally {
 		isProcessing = false;
 		userInput.disabled = false;
 		sendButton.disabled = false;
-		typingIndicator?.classList.remove("visible");
+		typingIndicator.style.display = "none";
 	}
 }
 
 /* =========================
-   🎤 MICRÓFONO
+   SSE
 ========================= */
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-
-let recognition = null;
-
-if (SR) {
-	recognition = new SR();
-	recognition.lang = "es-ES";
-	recognition.continuous = false;
-
-	recognition.onresult = (e) => {
-		const text = e.results[0][0].transcript;
-		sendMessage(text);
-	};
-}
-
-function startMic() {
-	if (recognition) recognition.start();
-}
-
-/* =========================
-   🧾 SSE PARSER
-========================= */
-function consumeSSE(buffer) {
+function parseSSE(buffer) {
 	let clean = buffer.replace(/\r/g, "");
 	const events = [];
 
@@ -182,6 +154,8 @@ function consumeSSE(buffer) {
 /* =========================
    INPUT
 ========================= */
+sendButton.addEventListener("click", sendMessage);
+
 userInput.addEventListener("keydown", (e) => {
 	if (e.key === "Enter" && !e.shiftKey) {
 		e.preventDefault();
@@ -189,4 +163,4 @@ userInput.addEventListener("keydown", (e) => {
 	}
 });
 
-sendButton.addEventListener("click", sendMessage);
+});
